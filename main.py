@@ -38,3 +38,10 @@ async def get_metadata(collection_address: str, token_id: Optional[int] = None):
     res = await get_collection_meta(collection_address.lower(), token_id=token_id)
 
     return res
+
+
+@app.get("/missing-metadata/{collection_address}")
+async def get_metadata(collection_address: str, token_id: Optional[int] = None):
+    res = await get_collection_meta(collection_address.lower(), token_id=token_id)
+
+    return res
