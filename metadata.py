@@ -106,9 +106,9 @@ def database_metadata_check(rarity_collection, total_supply, start):
 
     if documents == 0:
         if start == 0:
-            return [i for i in range(start, total_supply - 1)]
-        else:
             return [i for i in range(start, total_supply)]
+        else:
+            return [i for i in range(start, total_supply + 1)]
 
     if total_supply - documents > 0:
         token_ids = [int(id) for id in rarity_collection.find().distinct("_id")]
@@ -157,25 +157,23 @@ def get_rarity_meta(contract_address):
 
         attribute_dict = df.to_dict("index")
 
-        for key, value in attribute_dict.items():
-            rarity_scores, trait_count = get_token_rarity(trait_counts, value)
-            single_meta_dict = metadict.get(key)
-            attribute_list = single_meta_dict["attributes"]
+        for token_id, attributes in attribute_dict.items():
+            single_meta_dict = metadict[token_id]
+            print(attributes)
+            rarity_scores, trait_count = get_token_rarity(trait_counts, attributes)
             new_attribute_list = []
-            while attribute_list:
-                attribute = attribute_list.pop()
-                attribute["score"] = rarity_scores[attribute["trait_type"]]
-                new_attribute_list.append(attribute)
-            trait_count_dict = {
-                "trait_type": "Trait Count",
-                "value": trait_count,
-                "score": rarity_scores["Trait Count"],
-            }
-            new_attribute_list.append(trait_count_dict)
+            for trait_type, value in attributes.items():
+                new_attribute_list.append(
+                    {
+                        "trait_type": trait_type,
+                        "value": value,
+                        "score": rarity_scores[trait_type],
+                    }
+                )
             single_meta_dict["attributes"] = new_attribute_list
             single_meta_dict["rarity_score"] = round(rarity_scores["Total"], 2)
 
-            meta_mapping[key] = single_meta_dict
+            meta_mapping[token_id] = single_meta_dict
 
         mapping_with_ranks = calculate_ranks(meta_mapping)
 
@@ -185,7 +183,14 @@ def get_rarity_meta(contract_address):
             rarity_collection.replace_one({"_id": token_updated["_id"]}, token_updated)
         return meta_mapping
     else:
-        return "Rarity already calculated"
+        rarity_missing = rarity_collection.count_documents(
+            {"rarity_rank": {"$exists": False}}
+        )
+        if rarity_missing > 0:
+            # TODO: Add mechanic to add rarity for some tokens in case something went wrong
+            return "Something is wrong - don't have rarity for all tokens!"
+        else:
+            return "Rarity already calculated"
 
 
 def get_attribute_dataframe(meta_dict):
@@ -208,6 +213,8 @@ def get_attribute_dataframe(meta_dict):
     # replace NaN Values as they tend to make Problems
     attribute_df.fillna("None", inplace=True)
 
+    if "Trait Count" in attribute_df.index:
+        attribute_df.drop("Trait Count", axis=1)
     # create a new column with trait counts for each token
     attribute_df["Trait Count"] = (attribute_df != "None").sum(1)
 
@@ -245,14 +252,13 @@ def get_token_rarity(attribute_dist_dict, token_attributes, trait_weighting={}):
             score_preweight = round(1 / (count / nft_count), 2)
         scores[attr] = score_preweight * trait_weighting.get(attr, 1)
     scores["Total"] = sum(scores.values())
+    print(scores)
     return scores, trait_count
 
 
 def calculate_ranks(meta_mapping):
     token_list = list(meta_mapping.values())
-    print(token_list[0])
     token_list.sort(key=operator.itemgetter("rarity_score"), reverse=True)
-    print(token_list[0])
     ranked_list = []
     for index, item in enumerate(token_list, start=1):
         item["rarity_rank"] = index

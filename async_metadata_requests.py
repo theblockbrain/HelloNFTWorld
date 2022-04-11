@@ -7,7 +7,6 @@ from pymongo import collection, errors
 async def fetch(client, token_uri, collection, semaphore) -> tuple:
     async with semaphore:
         id = token_uri.split("/")[-1]
-        print(f"fetching {token_uri}")
         response = await client.get(token_uri)
         metadata = response.json()
         metadata["_id"] = int("".join(c for c in id if c.isdigit()))
@@ -23,7 +22,7 @@ async def fetch(client, token_uri, collection, semaphore) -> tuple:
 
 async def make_requests(urls: list, collection: collection) -> None:
     # windows supports 64 connections max
-    limits = httpx.Limits(max_connections=60, max_keepalive_connections=25)
+    limits = httpx.Limits(max_connections=60, max_keepalive_connections=30)
     client = httpx.AsyncClient(limits=limits)
     # keeps httpx from throwing a PoolTimeout
     semaphore = asyncio.Semaphore(60)
