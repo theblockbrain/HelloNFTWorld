@@ -25,7 +25,7 @@ IPFS_AUTH = (os.getenv("INFURA_IPFS_PROJECT"), os.getenv("INFURA_IPFS_SECRET"))
 # initialize ETH
 eth = Etherscan(os.getenv("ES-TOKEN"))
 
-from metadata import get_collection_meta
+from metadata import get_collection_meta, get_rarity_meta
 
 
 @app.get("/")
@@ -40,8 +40,7 @@ async def get_metadata(collection_address: str, token_id: Optional[int] = None):
     return res
 
 
-@app.get("/missing-metadata/{collection_address}")
-async def get_metadata(collection_address: str, token_id: Optional[int] = None):
-    res = await get_collection_meta(collection_address.lower(), token_id=token_id)
-
-    return res
+@app.get("/rarity/{collection_address}")
+def get_rarity(collection_address: str):
+    rarity = get_rarity_meta(collection_address.lower())
+    return rarity
