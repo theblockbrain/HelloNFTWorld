@@ -1,6 +1,11 @@
 #%%
 import requests
+import matplotlib.pyplot as plt
+import numpy as np
 from operator import itemgetter
+from web3 import Web3
+from sklearn.linear_model import LinearRegression
+from scipy.optimize import curve_fit
 
 #%%
 def plot_sales():
@@ -14,6 +19,8 @@ def plot_sales():
 
     sales_events = res.json()
     rarity = res2.json()
+
+    rarity_mapping = {token["_id"]: token["rarity_score"] for token in rarity}
 
     sales = [
         (event["asset"]["token_id"], event["total_price"]) for event in sales_events
@@ -44,7 +51,7 @@ def plot_sales():
         sale_object = {
             "token_id": sale["asset"]["token_id"],
             "total_price": sale["total_price"],
-            "over floor": round(
+            "over_floor": round(
                 (
                     int(sale["total_price"])
                     - daily_information[sale["created_date"][0:10]]["floor_price"]
@@ -52,12 +59,56 @@ def plot_sales():
                 / daily_information[sale["created_date"][0:10]]["floor_price"],
                 2,
             ),
+            "points": rarity_mapping[int(sale["asset"]["token_id"])],
         }
         sales_with_sugar.append(sale_object)
 
-    return "yes"
+    print(sales_with_sugar[5])
+
+    return sales_with_sugar
 
 
-plot_sales()
+sales = plot_sales()
 
+# %%
+def draw_plot(sales):
+    list_of_tuples = [
+        (sale["points"], Web3.fromWei(int(sale["total_price"]), "ether"))
+        for sale in sales
+    ]
+    # list_of_tuples = [(sale["points"], sale["over floor"]) for sale in sales]
+    print(list_of_tuples[0])
+
+    x, y = zip(*list_of_tuples)
+
+    x = np.array(x).reshape(-1, 1)
+    y = np.array(y)
+
+    model = LinearRegression().fit(x, y)
+
+    r_sq = model.score(x, y)
+    print(r_sq)
+
+
+draw_plot(sales)
+# %%
+def curve_fit(sales):
+    list_of_tuples = [
+        (sale["points"], Web3.fromWei(int(sale["total_price"]), "ether"))
+        for sale in sales
+    ]
+    # list_of_tuples = [(sale["points"], sale["over floor"]) for sale in sales]
+    print(list_of_tuples[0])
+
+    x, y = zip(*list_of_tuples)
+
+    x = np.array(x, dtype=float)
+    y = np.array(y, dtype=float)
+
+    fit = np.polyfit(np.log(x), y, 1)
+    print(fit)
+    # curve_fit(lambda t,a,b: a*np.exp(b*t),  x,  y,  p0=(900, 40))
+
+
+curve_fit(sales)
 # %%
