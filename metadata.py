@@ -190,7 +190,7 @@ def get_rarity_meta(contract_address):
             # TODO: Add mechanic to add rarity for some tokens in case something went wrong
             return "Something is wrong - don't have rarity for all tokens!"
         else:
-            return "Rarity already calculated"
+            return list(rarity_collection.find({}))
 
 
 def get_attribute_dataframe(meta_dict):

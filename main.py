@@ -17,6 +17,7 @@ gen_db = client.bb_hackathon
 rarity_db = client.rarity
 
 abi_collection = gen_db.abis
+slug_collection = gen_db.slugs
 
 w3 = Web3(Web3.HTTPProvider(os.getenv("WEB3_INFURA_URL")))
 
@@ -26,6 +27,7 @@ IPFS_AUTH = (os.getenv("INFURA_IPFS_PROJECT"), os.getenv("INFURA_IPFS_SECRET"))
 eth = Etherscan(os.getenv("ES-TOKEN"))
 
 from metadata import get_collection_meta, get_rarity_meta
+from os_api import get_collection_slug, get_os_sales_events
 
 
 @app.get("/")
@@ -35,6 +37,7 @@ def read_root():
 
 @app.get("/metadata/{collection_address}")
 async def get_metadata(collection_address: str, token_id: Optional[int] = None):
+    # TODO: Querying metadata for single tokens
     res = await get_collection_meta(collection_address.lower(), token_id=token_id)
 
     return res
@@ -44,3 +47,15 @@ async def get_metadata(collection_address: str, token_id: Optional[int] = None):
 def get_rarity(collection_address: str):
     rarity = get_rarity_meta(collection_address.lower())
     return rarity
+
+
+@app.get("/os-sales/{collection_address}")
+def get_os_sales(collection_address: str, token_id: Optional[int] = None):
+    slug_doc = slug_collection.find_one({"_id": collection_address.lower()})
+    if slug_doc:
+        slug = slug_doc["slug"]
+    else:
+        slug = get_collection_slug(collection_address.lower())
+    sales_events = get_os_sales_events(slug, num_queries=4)
+    print(len(sales_events))
+    return sales_events
