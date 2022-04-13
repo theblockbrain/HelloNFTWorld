@@ -4,6 +4,7 @@ import os
 from typing import Optional
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from matplotlib.pyplot import sci
 from pymongo import MongoClient
 from web3 import Web3
@@ -13,6 +14,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
+
+origins = ["http://localhost:3000"]
+
+app.add_middleware(
+    CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"]
+)
 
 client = MongoClient(os.getenv("MONGODB_STRING"), 27017)
 gen_db = client.bb_hackathon
