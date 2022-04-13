@@ -4,6 +4,9 @@ from web3 import Web3
 import scipy
 from scipy import optimize
 
+from main import slug_collection, rarity_db
+from os_api import get_collection_slug, get_os_sales_events
+
 
 def map_sales(sales_events, rarity_data):
 
@@ -67,6 +70,30 @@ def transform_sales_to_arrays(sales, x_kpi, y_kpi):
     return x, y
 
 
+def curve_fitter(collection_address: str, method="scipy"):
+    A, B = 0, 0
+    slug_doc = slug_collection.find_one({"_id": collection_address.lower()})
+    if slug_doc:
+        slug = slug_doc["slug"]
+    else:
+        slug = get_collection_slug(collection_address.lower())
+    sales_events = get_os_sales_events(slug, num_queries=4)
+    rarity_data = rarity_db[collection_address.lower()].find({})
+
+    mapped_sales = map_sales(sales_events=sales_events, rarity_data=rarity_data)
+    x, y = transform_sales_to_arrays(mapped_sales, x_kpi="points", y_kpi="total_price")
+
+    match method:
+        case "scipy":
+            A, B = scipy_fit(x, y, (18, 0.01))
+        case "poly":
+            A, B = poly_fit(x, y)
+        case "curve":
+            A, B = poly_fit(x, y)
+
+    return A, B
+
+
 def curve_fit(x, y):
     plt.scatter(x, y)
 
@@ -82,6 +109,8 @@ def curve_fit(x, y):
     y_line = np.array([exp_function(x) for x in x_line])
 
     plt.plot(x_line, y_line, color="g")
+
+    return A, B
 
 
 def poly_fit(x, y):
@@ -99,7 +128,7 @@ def poly_fit(x, y):
 
     plt.plot(x_line, y_line, color="g")
 
-    return (A, B)
+    return A, B
 
 
 def scipy_fit(x, y, p0):
@@ -116,7 +145,19 @@ def scipy_fit(x, y, p0):
 
     plt.plot(x_line, y_line, color="g")
 
-    return (A, B)
+    return A, B
+
+
+def estimate_values(A, B, rarity_information):
+    def estimator(x):
+        return A * np.exp(B * x)
+
+    estimates = [
+        {"token_id": token["_id"], "estimate": estimator(token["rarity_score"])}
+        for token in rarity_information
+    ]
+
+    return estimates
 
 
 # %%

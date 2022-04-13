@@ -1,3 +1,4 @@
+from operator import itemgetter
 import os
 
 from typing import Optional
@@ -29,13 +30,7 @@ eth = Etherscan(os.getenv("ES-TOKEN"))
 
 from metadata import get_collection_meta, get_rarity_meta
 from os_api import get_collection_slug, get_os_sales_events
-from salesdata import (
-    map_sales,
-    transform_sales_to_arrays,
-    scipy_fit,
-    poly_fit,
-    curve_fit,
-)
+from salesdata import curve_fitter, estimate_values
 
 
 @app.get("/")
@@ -71,23 +66,18 @@ def get_os_sales(collection_address: str, token_id: Optional[int] = None):
 
 @app.get("/curve-fit/{collection_address}")
 def get_curve(collection_address: str, method: Optional[str] = "scipy"):
-    slug_doc = slug_collection.find_one({"_id": collection_address.lower()})
-    if slug_doc:
-        slug = slug_doc["slug"]
-    else:
-        slug = get_collection_slug(collection_address.lower())
-    sales_events = get_os_sales_events(slug, num_queries=4)
-    rarity_data = rarity_db[collection_address.lower()].find({})
 
-    mapped_sales = map_sales(sales_events=sales_events, rarity_data=rarity_data)
-    x, y = transform_sales_to_arrays(mapped_sales, x_kpi="points", y_kpi="total_price")
-
-    match method:
-        case "scipy":
-            A, B = scipy_fit(x, y, (18, 0.01))
-        case "poly":
-            A, B = poly_fit(x, y)
-        case "curve":
-            A, B = poly_fit(x, y)
+    A, B = curve_fitter(collection_address=collection_address.lower(), method=method)
 
     return f"Fitted Curve: {A}*exp({B}*x)"
+
+
+@app.get("/estimates/{collection_address}")
+def get_estimates(collection_address: str):
+    rarity = get_rarity_meta(collection_address.lower())
+
+    A, B = curve_fitter(collection_address.lower())
+    estimates = estimate_values(A, B, rarity_information=rarity)
+    sorted_estimates = sorted(estimates, key=itemgetter("token_id"))
+
+    return sorted_estimates
