@@ -25,7 +25,10 @@ async def get_collection_meta(URI, token_id=None):
         try:
             total_supply = contract.functions.MAX_SUPPLY().call()
         except web3exceptions.ABIFunctionNotFound as e:
-            raise e
+            # this is obviously shit, but why does bored ape call their
+            # function "MAX_APES"??????
+            print("Can't get total supply, assuming 10k")
+            total_supply = 10000
 
     try:
         token_uri = contract.functions.tokenURI(0).call()
@@ -51,13 +54,29 @@ async def get_collection_meta(URI, token_id=None):
         uris = []
         for token_id in missing_tokens:
             if "/0" in token_uri:
-                uris.append(token_uri.replace("/0", f"/{token_id}"))
+                uris.append(
+                    token_uri.replace("/0", f"/{token_id}").replace(
+                        "ipfs://", "https://cf-ipfs.com/ipfs/"
+                    )
+                )
             elif "/1" in token_uri:
-                uris.append(token_uri.replace("/0", f"/{token_id}"))
+                uris.append(
+                    token_uri.replace("/0", f"/{token_id}").replace(
+                        "ipfs://", "https://cf-ipfs.com/ipfs/"
+                    )
+                )
             elif "0" in token_uri:
-                uris.append(token_uri.replace("0", f"{token_id}"))
+                uris.append(
+                    token_uri.replace("0", f"{token_id}").replace(
+                        "ipfs://", "https://cf-ipfs.com/ipfs/"
+                    )
+                )
             elif "1" in token_uri:
-                uris.append(token_uri.replace("1", f"{token_id}"))
+                uris.append(
+                    token_uri.replace("1", f"{token_id}").replace(
+                        "ipfs://", "https://cf-ipfs.com/ipfs/"
+                    )
+                )
             else:
                 print("Can't handle this URI")
 
@@ -119,6 +138,11 @@ def database_metadata_check(rarity_collection, total_supply, start):
     return missing_metadata
 
 
+def database_rarity_check(rarity_collection):
+    missing_rarity = rarity_collection.find({"rarity_rank": None})
+    return missing_rarity
+
+
 def abi_getter(address):
     doc = find_id_match(abi_collection, address.lower())
 
@@ -143,11 +167,11 @@ def create_contract(CONTRACT_ADDRESS):
     return contract
 
 
-def get_rarity_meta(contract_address):
+def get_rarity_meta(contract_address, overwrite_rarity=False):
     meta_mapping = {}
     rarity_collection = rarity_db[contract_address]
     first_doc = rarity_collection.find_one({})
-    if not "rarity_rank" in first_doc.keys():
+    if overwrite_rarity or not "rarity_rank" in first_doc.keys():
         metadict = {}
         cursor = rarity_collection.find({})
         for token in cursor:
@@ -159,7 +183,6 @@ def get_rarity_meta(contract_address):
 
         for token_id, attributes in attribute_dict.items():
             single_meta_dict = metadict[token_id]
-            print(attributes)
             rarity_scores, trait_count = get_token_rarity(trait_counts, attributes)
             new_attribute_list = []
             for trait_type, value in attributes.items():
@@ -183,12 +206,12 @@ def get_rarity_meta(contract_address):
             rarity_collection.replace_one({"_id": token_updated["_id"]}, token_updated)
         return meta_mapping
     else:
-        rarity_missing = rarity_collection.count_documents(
-            {"rarity_rank": {"$exists": False}}
-        )
+        rarity_missing = rarity_collection.count_documents({"rarity_rank": None})
+        print(f"missing {rarity_missing} Documents!")
         if rarity_missing > 0:
+            print(f"Overwriting Rarity Data for Collection {contract_address}")
+            get_rarity_meta(contract_address=contract_address, overwrite_rarity=True)
             # TODO: Add mechanic to add rarity for some tokens in case something went wrong
-            return "Something is wrong - don't have rarity for all tokens!"
         else:
             return list(rarity_collection.find({}))
 
@@ -252,7 +275,6 @@ def get_token_rarity(attribute_dist_dict, token_attributes, trait_weighting={}):
             score_preweight = round(1 / (count / nft_count), 2)
         scores[attr] = score_preweight * trait_weighting.get(attr, 1)
     scores["Total"] = sum(scores.values())
-    print(scores)
     return scores, trait_count
 
 

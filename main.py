@@ -1,3 +1,4 @@
+import asyncio
 from operator import itemgetter
 import os
 
@@ -35,7 +36,7 @@ IPFS_AUTH = (os.getenv("INFURA_IPFS_PROJECT"), os.getenv("INFURA_IPFS_SECRET"))
 # initialize ETH
 eth = Etherscan(os.getenv("ES-TOKEN"))
 
-from metadata import get_collection_meta, get_rarity_meta
+from metadata import get_collection_meta, get_rarity_meta, database_rarity_check
 from os_api import get_collection_slug, get_os_sales_events
 from salesdata import curve_fitter, estimate_values
 
@@ -80,7 +81,14 @@ def get_curve(collection_address: str, method: Optional[str] = "scipy"):
 
 
 @app.get("/estimates/{collection_address}")
-def get_estimates(collection_address: str):
+async def get_estimates(collection_address: str):
+    rarity_coll = rarity_db[collection_address.lower()]
+    doc = rarity_coll.find_one({})
+    if not doc:
+        print("need to get metadata")
+        res = await asyncio.wait_for(
+            get_collection_meta(collection_address.lower()), timeout=None
+        )
     rarity = get_rarity_meta(collection_address.lower())
 
     A, B = curve_fitter(collection_address.lower())
@@ -88,3 +96,24 @@ def get_estimates(collection_address: str):
     sorted_estimates = sorted(estimates, key=itemgetter("token_id"))
 
     return sorted_estimates
+
+
+@app.get("/front-end/{collection_address}")
+async def frontend_get_data(collection_address: str):
+    rarity_coll = rarity_db[collection_address.lower()]
+    await asyncio.wait_for(
+        get_collection_meta(collection_address.lower()), timeout=None
+    )
+
+    missing_rarity = list(database_rarity_check(rarity_collection=rarity_coll))
+    print(f"From Main function: {len(missing_rarity)} missing rarity docs!")
+    rarity = get_rarity_meta(collection_address.lower())
+
+    A, B = curve_fitter(collection_address.lower(), rarity_data=rarity)
+    estimates = estimate_values(A, B, rarity_information=rarity)
+
+    for token in rarity:
+        match = next((x for x in estimates if x["token_id"] == token["_id"]), None)
+        token.update(match)
+
+    return rarity

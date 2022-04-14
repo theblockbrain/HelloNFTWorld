@@ -10,11 +10,12 @@ from os_api import get_collection_slug, get_os_sales_events
 
 def map_sales(sales_events, rarity_data):
 
-    rarity_mapping = {token["_id"]: token["rarity_score"] for token in rarity_data}
-
-    sales = [
-        (event["asset"]["token_id"], event["total_price"]) for event in sales_events
-    ]
+    try:
+        rarity_mapping = {token["_id"]: token["rarity_score"] for token in rarity_data}
+    except:
+        # sometimes we get an odd token, in that case we just want to skip
+        # TODO: figure out why
+        pass
 
     dates = set([event["created_date"][0:10] for event in sales_events])
 
@@ -33,20 +34,28 @@ def map_sales(sales_events, rarity_data):
 
     sales_with_sugar = []
     for sale in sales_events:
-        sale_object = {
-            "token_id": sale["asset"]["token_id"],
-            "total_price": sale["total_price"],
-            "over_floor": round(
-                (
-                    int(sale["total_price"])
-                    - daily_information[sale["created_date"][0:10]]["floor_price"]
-                )
-                / daily_information[sale["created_date"][0:10]]["floor_price"],
-                2,
-            ),
-            "points": rarity_mapping[int(sale["asset"]["token_id"])],
-        }
-        sales_with_sugar.append(sale_object)
+        if sale["asset"]:
+            try:
+                sale_object = {
+                    "token_id": sale["asset"]["token_id"],
+                    "total_price": sale["total_price"],
+                    "over_floor": round(
+                        (
+                            int(sale["total_price"])
+                            - daily_information[sale["created_date"][0:10]][
+                                "floor_price"
+                            ]
+                        )
+                        / daily_information[sale["created_date"][0:10]]["floor_price"],
+                        2,
+                    ),
+                    "points": rarity_mapping[int(sale["asset"]["token_id"])],
+                }
+                sales_with_sugar.append(sale_object)
+            except:
+                # yes, I know, this is suboptimal, but we can afford to
+                # omit a single sale when a single token is missing or the likes
+                pass
 
     return sales_with_sugar
 
@@ -70,7 +79,7 @@ def transform_sales_to_arrays(sales, x_kpi, y_kpi):
     return x, y
 
 
-def curve_fitter(collection_address: str, method="scipy"):
+def curve_fitter(collection_address: str, rarity_data, method="scipy"):
     A, B = 0, 0
     slug_doc = slug_collection.find_one({"_id": collection_address.lower()})
     if slug_doc:
@@ -78,7 +87,6 @@ def curve_fitter(collection_address: str, method="scipy"):
     else:
         slug = get_collection_slug(collection_address.lower())
     sales_events = get_os_sales_events(slug, num_queries=4)
-    rarity_data = rarity_db[collection_address.lower()].find({})
 
     mapped_sales = map_sales(sales_events=sales_events, rarity_data=rarity_data)
     x, y = transform_sales_to_arrays(mapped_sales, x_kpi="points", y_kpi="total_price")

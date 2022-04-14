@@ -23,7 +23,8 @@ async def fetch(client, token_uri, collection, semaphore) -> tuple:
 async def make_requests(urls: list, collection: collection) -> None:
     # windows supports 64 connections max
     limits = httpx.Limits(max_connections=60, max_keepalive_connections=30)
-    client = httpx.AsyncClient(limits=limits)
+    timeout = httpx.Timeout(10.0, read=None)
+    client = httpx.AsyncClient(limits=limits, timeout=timeout)
     # keeps httpx from throwing a PoolTimeout
     semaphore = asyncio.Semaphore(60)
 
