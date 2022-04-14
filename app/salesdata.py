@@ -1,11 +1,10 @@
-import matplotlib.pyplot as plt
 import numpy as np
 from web3 import Web3
 import scipy
 from scipy import optimize
 
-from main import slug_collection, rarity_db
-from os_api import get_collection_slug, get_os_sales_events
+from app.main import slug_collection
+from app.os_api import get_collection_slug, get_os_sales_events
 
 
 def map_sales(sales_events, rarity_data):
@@ -103,55 +102,26 @@ def curve_fitter(collection_address: str, rarity_data, method="scipy"):
 
 
 def curve_fit(x, y):
-    plt.scatter(x, y)
 
     fit = np.polyfit(x, np.log(y), 1)
 
     B, A = fit[0], np.exp(fit[1])
-    print(A, B)
-
-    def exp_function(x):
-        return A * np.exp(B * x)
-
-    x_line = np.arange(min(x), max(x), ((max(x) - min(x)) / 20), dtype=int)
-    y_line = np.array([exp_function(x) for x in x_line])
-
-    plt.plot(x_line, y_line, color="g")
 
     return A, B
 
 
 def poly_fit(x, y):
-    plt.scatter(x, y)
-
     fit = np.polyfit(x, np.log(y), 1, w=np.sqrt(y))
     B, A = fit[0], np.exp(fit[1])
     print(A, B)
-
-    def exp_function(x):
-        return A * np.exp(B * x)
-
-    x_line = np.arange(min(x), max(x), ((max(x) - min(x)) / 20), dtype=int)
-    y_line = np.array([exp_function(x) for x in x_line])
-
-    plt.plot(x_line, y_line, color="g")
 
     return A, B
 
 
 def scipy_fit(x, y, p0):
-    plt.scatter(x, y)
     fit = scipy.optimize.curve_fit(lambda t, a, b: a * np.exp(b * t), x, y, p0=p0)
     A, B = fit[0]
     print(A, B)
-
-    def exp_function(x):
-        return A * np.exp(B * x)
-
-    x_line = np.arange(min(x), max(x), ((max(x) - min(x)) / 20), dtype=int)
-    y_line = np.array([exp_function(x) for x in x_line])
-
-    plt.plot(x_line, y_line, color="g")
 
     return A, B
 

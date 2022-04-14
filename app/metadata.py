@@ -9,11 +9,12 @@ import operator
 from web3 import Web3, exceptions as web3exceptions
 
 from datetime import datetime
-from main import w3, eth, abi_collection, rarity_db
-from db_functions import find_id_match
-from ipfs import get_whole_directory
-from re_patterns import match_object, match_token_id
-from async_metadata_requests import make_requests
+
+from app.main import w3, eth, abi_collection, rarity_db
+from app.db_functions import find_id_match
+from app.ipfs import get_whole_directory
+from app.re_patterns import match_object, match_token_id
+from app.async_metadata_requests import make_requests
 
 
 async def get_collection_meta(URI, token_id=None):

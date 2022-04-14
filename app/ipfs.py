@@ -1,5 +1,5 @@
 import requests
-from main import IPFS_AUTH
+from app.main import IPFS_AUTH
 
 
 def read_ipfs_file(URI):

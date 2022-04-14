@@ -4,7 +4,7 @@ import os
 from ratelimit import limits, sleep_and_retry
 from dotenv import load_dotenv
 
-from main import slug_collection
+from app.main import slug_collection
 
 load_dotenv()
 

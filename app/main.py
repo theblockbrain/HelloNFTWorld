@@ -6,7 +6,6 @@ from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from matplotlib.pyplot import sci
 from pymongo import MongoClient
 from web3 import Web3
 from etherscan import Etherscan
@@ -16,7 +15,7 @@ load_dotenv()
 
 app = FastAPI()
 
-origins = ["http://localhost:3000"]
+origins = ["http://localhost:3000", "https://nft.wassenich.dev"]
 
 app.add_middleware(
     CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"]
@@ -36,9 +35,9 @@ IPFS_AUTH = (os.getenv("INFURA_IPFS_PROJECT"), os.getenv("INFURA_IPFS_SECRET"))
 # initialize ETH
 eth = Etherscan(os.getenv("ES-TOKEN"))
 
-from metadata import get_collection_meta, get_rarity_meta, database_rarity_check
-from os_api import get_collection_slug, get_os_sales_events
-from salesdata import curve_fitter, estimate_values
+from app.metadata import get_collection_meta, get_rarity_meta, database_rarity_check
+from app.os_api import get_collection_slug, get_os_sales_events
+from app.salesdata import curve_fitter, estimate_values
 
 
 @app.get("/")
@@ -74,8 +73,10 @@ def get_os_sales(collection_address: str, token_id: Optional[int] = None):
 
 @app.get("/curve-fit/{collection_address}")
 def get_curve(collection_address: str, method: Optional[str] = "scipy"):
-
-    A, B = curve_fitter(collection_address=collection_address.lower(), method=method)
+    rarity = get_rarity_meta(collection_address.lower())
+    A, B = curve_fitter(
+        collection_address=collection_address.lower(), rarity_data=rarity, method=method
+    )
 
     return f"Fitted Curve: {A}*exp({B}*x)"
 
@@ -91,7 +92,7 @@ async def get_estimates(collection_address: str):
         )
     rarity = get_rarity_meta(collection_address.lower())
 
-    A, B = curve_fitter(collection_address.lower())
+    A, B = curve_fitter(collection_address.lower(), rarity_data=rarity)
     estimates = estimate_values(A, B, rarity_information=rarity)
     sorted_estimates = sorted(estimates, key=itemgetter("token_id"))
 
