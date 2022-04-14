@@ -15,7 +15,11 @@ load_dotenv()
 
 app = FastAPI()
 
-origins = ["http://localhost:3000", "https://nft.wassenich.dev"]
+origins = [
+    "http://localhost:3000",
+    "https://nft.wassenich.dev",
+    "http://bb-hackathon-frontend.herokuapp.com",
+]
 
 app.add_middleware(
     CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"]
