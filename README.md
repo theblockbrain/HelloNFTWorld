@@ -22,3 +22,6 @@ Can be found here: https://github.com/theblockbrain/hellonftworld-frontend
 
 ## What about comments?
 Ain't nobody got time for that, 7 days is very little for one person to develop FE and BE simultaniously.
+
+## Can I get a video walkthrough?
+Theres's a small demo video available here, though I don't go into debth into the different functions: https://www.youtube.com/watch?v=WU9VJVYDYTA
