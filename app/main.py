@@ -105,6 +105,14 @@ async def get_estimates(collection_address: str):
 
 @app.get("/front-end/{collection_address}")
 async def frontend_get_data(collection_address: str):
+    """
+    This endpoint merges the functionality of all endpoints above to enable the frontend to get everything in a single request.
+    To improve the usability of the app, in case of a collection that has not been queried before,
+    it would be best to make the front-end display some kind of "We're getting the data, this might take a bit" message,
+    but I haven't fugured out how to do that yet.
+    For some reason, this request will result in an error after querrying the metadata and calculating the ranks. I suspect this is due to
+    the free-tier MongoDB Cluster being too slow in processing all the inserts, and returning incomplete data
+    """
     rarity_coll = rarity_db[collection_address.lower()]
     await asyncio.wait_for(
         get_collection_meta(collection_address.lower()), timeout=None
@@ -113,6 +121,8 @@ async def frontend_get_data(collection_address: str):
     missing_rarity = list(database_rarity_check(rarity_collection=rarity_coll))
     print(f"From Main function: {len(missing_rarity)} missing rarity docs!")
     rarity = get_rarity_meta(collection_address.lower())
+
+    # THIS IS WHERE THE ERROR HAPPENS TODO: Trace & fix
 
     A, B = curve_fitter(collection_address.lower(), rarity_data=rarity)
     estimates = estimate_values(A, B, rarity_information=rarity)

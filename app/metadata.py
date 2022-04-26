@@ -20,17 +20,24 @@ from app.async_metadata_requests import make_requests
 async def get_collection_meta(URI, token_id=None):
     rarity_collection = rarity_db[URI]
     contract = create_contract(URI)
+
+    # find total supply
     try:
+        # the OpenZeppelin standard
         total_supply = contract.functions.totalSupply().call()
     except web3exceptions.ABIFunctionNotFound:
         try:
+            # some other variation I've found
             total_supply = contract.functions.MAX_SUPPLY().call()
         except web3exceptions.ABIFunctionNotFound as e:
+            # catch all in case the collection doesn't follow any standard whatsoever
+            # (usually older NFT collections)
             # this is obviously shit, but why does bored ape call their
             # function "MAX_APES"??????
             print("Can't get total supply, assuming 10k")
             total_supply = 10000
 
+    # figure out if tokenIDs start at 0 or 1
     try:
         token_uri = contract.functions.tokenURI(0).call()
         starting_id = 0
@@ -39,8 +46,10 @@ async def get_collection_meta(URI, token_id=None):
             token_uri = contract.functions.tokenURI(1).call()
             starting_id = 1
         except web3exceptions.ContractLogicError as e:
+            # for super weird collections, throw error
             raise e
 
+    # check if we have all the required metadata
     missing_tokens = database_metadata_check(
         rarity_collection=rarity_collection,
         total_supply=total_supply,
@@ -53,6 +62,8 @@ async def get_collection_meta(URI, token_id=None):
         return meta
     else:
         uris = []
+        # construct the token-URIs for all missing tokens
+        # currently unable to handle collections with individual URIs (non-numeral)
         for token_id in missing_tokens:
             if "/0" in token_uri:
                 uris.append(
@@ -79,12 +90,19 @@ async def get_collection_meta(URI, token_id=None):
                     )
                 )
             else:
+                # TODO: implement logic for collections like NFT-Worlds
                 print("Can't handle this URI")
 
+        # get metadata for missing tokens (this also returns the metadata,
+        # but we do a separate call to the DB in case we already had some tokens)
         metadata = await make_requests(urls=uris, collection=rarity_collection)
+        # fetch all metadata once above requests are done
         meta = list(rarity_collection.find({}).sort("_id"))
         return meta
 
+    # Everything here is a leftover from a previous version of the meta-data querying
+    # this part is able to download entire directories from IPFS, however this was
+    # highly unreliable, and has been put aside. Keeping it in case we ever need it again.
     meta_dict = {}
     abi_string = str(contract.abi)
     """if "base_uri" in abi_string:
@@ -120,7 +138,18 @@ async def get_collection_meta(URI, token_id=None):
     return meta_dict
 
 
-def database_metadata_check(rarity_collection, total_supply, start):
+def database_metadata_check(rarity_collection, total_supply: int, start: int):
+    """
+    Input:
+        rarity_collection (Mongo Collection of metadata)
+        total_supply: Number of Tokens
+        start: Usually 0 or 1
+    Returns:
+        missing_metadata: List of missing token IDs
+
+    This check allows us to only fetch missing token metadata in case the requests
+    timed out at some point and the collection has been partially fetched
+    """
     missing_metadata = []
     documents = rarity_collection.count_documents({})
 
@@ -140,11 +169,19 @@ def database_metadata_check(rarity_collection, total_supply, start):
 
 
 def database_rarity_check(rarity_collection):
+    """
+    Returns a cursor of documents without rarity data
+    """
     missing_rarity = rarity_collection.find({"rarity_rank": None})
     return missing_rarity
 
 
 def abi_getter(address):
+    """
+    Gets a contract ABI from etherscan if not already cached in DB
+
+    Returns: ABI (string)
+    """
     doc = find_id_match(abi_collection, address.lower())
 
     if doc:
@@ -162,6 +199,12 @@ def abi_getter(address):
 
 
 def create_contract(CONTRACT_ADDRESS):
+    """
+    Input:
+        CONTRACT_ADDRESS (string)
+    Returns:
+        contract (Web3 Contract Object)
+    """
     ABI = abi_getter(CONTRACT_ADDRESS)
     CONTRACT_ADDRESS = Web3.toChecksumAddress(CONTRACT_ADDRESS)
     contract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=ABI)
@@ -169,10 +212,21 @@ def create_contract(CONTRACT_ADDRESS):
 
 
 def get_rarity_meta(contract_address, overwrite_rarity=False):
+    """
+    Input:
+        contract_address (string)
+        overwrite_rarity (boolean, default=False)
+
+    Calculates the Rarity Ranking for a given contract address, and returns
+    all documents from the DB.
+    If overvrite_rarity is True, ignores existing values and recalculates everything
+    (use if metadata of collection has changed)
+    """
     meta_mapping = {}
     rarity_collection = rarity_db[contract_address]
     first_doc = rarity_collection.find_one({})
     if overwrite_rarity or not "rarity_rank" in first_doc.keys():
+        # get rarity for entire collection
         metadict = {}
         cursor = rarity_collection.find({})
         for token in cursor:
@@ -207,13 +261,17 @@ def get_rarity_meta(contract_address, overwrite_rarity=False):
             rarity_collection.replace_one({"_id": token_updated["_id"]}, token_updated)
         return meta_mapping
     else:
+        # check which documents need rarity information
         rarity_missing = rarity_collection.count_documents({"rarity_rank": None})
         print(f"missing {rarity_missing} Documents!")
         if rarity_missing > 0:
+            # currently, we simply recalculate the entire collection in case some values are missing,
+            # as it's highly likely that the rarity distributions also change when including more tokens
             print(f"Overwriting Rarity Data for Collection {contract_address}")
             get_rarity_meta(contract_address=contract_address, overwrite_rarity=True)
             # TODO: Add mechanic to add rarity for some tokens in case something went wrong
         else:
+            # when all rarity data is available, simply return it
             return list(rarity_collection.find({}))
 
 
@@ -221,6 +279,8 @@ def get_attribute_dataframe(meta_dict):
     """
     meta_dict: Expects a dictionary with one key, value pair per token.
     Example: { ('0': { metadata }, '1': { metadata } ...) }
+
+    Returns a DataFrame containing all token-metadata. This is the basis for further rarity calculations.
     """
     list_of_dicts = []
     for token_id, meta in meta_dict.items():
@@ -246,6 +306,10 @@ def get_attribute_dataframe(meta_dict):
 
 
 def get_trait_counts(attribute_df):
+    """
+    Counts how often a trait appears within a collection and returns a dict.
+    Example output: {"Eyes": {"Blue": 755, "Yellow": 125, ... }, "Background": ...}
+    """
     attribute_dist_dict = {}
     for col in attribute_df.columns:
         attribute_counts_df = attribute_df[col].value_counts(dropna=False)
@@ -255,15 +319,21 @@ def get_trait_counts(attribute_df):
 
 def get_token_rarity(attribute_dist_dict, token_attributes, trait_weighting={}):
     """
-    attribute_dist_dict: as returned by .get_trait_counts()
+    attribute_dist_dict: as returned by get_trait_counts()
     token_attributes: a dict containing key: value pairs for each trait of the NFT
             ( if a trait is left out, it is assumed to be missing )
     trait_weighting: pass an optional dict of weightings for your traits
             (e.g.: {"Background": 1, "Eyes": 2, "trait_count": 8})
+
+    Returns:
+        scores (dict, exp: {"Eyes": 12.5, "Background": 42.88 ... })
+        trait_count (int) (TODO: Delete this?)
     """
     nft_count = sum(attribute_dist_dict[list(attribute_dist_dict.keys())[0]].values())
     scores = {}
     for attr in attribute_dist_dict.keys():
+        # I honestly can't remember why I put this destinvtion here, I believe
+        # it is no longer needed. #TODO: Test if this can go.
         if attr == "Trait Count":
             trait_count = token_attributes["Trait Count"]
             score_preweight = round(
@@ -280,6 +350,10 @@ def get_token_rarity(attribute_dist_dict, token_attributes, trait_weighting={}):
 
 
 def calculate_ranks(meta_mapping):
+    """
+    Takes the filled meta_mapping and ranks tokens by their scores.
+    Returns a sorted list of all tokens. (highest to lowest)
+    """
     token_list = list(meta_mapping.values())
     token_list.sort(key=operator.itemgetter("rarity_score"), reverse=True)
     ranked_list = []
